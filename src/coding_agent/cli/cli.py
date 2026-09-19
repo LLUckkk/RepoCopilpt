@@ -10,6 +10,7 @@ from coding_agent.agent import (
     AgentRunResult,
     AgentStepLimitError,
 )
+from coding_agent.cli.console_events import ConsoleEventHandler
 from coding_agent.providers import (
     ModelProviderError,
     OpenAICompatibleProvider,
@@ -38,6 +39,7 @@ async def _execute_agent(
     api_key: str,
     base_url: str | None,
     max_steps: int,
+    verbose: bool,
 ) -> AgentRunResult:
     provider = OpenAICompatibleProvider(
         model=model,
@@ -58,6 +60,7 @@ async def _execute_agent(
         registry=registry,
         context=ToolContext(workspace),
         max_steps=max_steps,
+        event_handler=ConsoleEventHandler(verbose=verbose),
     )
 
     try:
@@ -112,6 +115,14 @@ def run(
             max=200,
         ),
     ] = 20,
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            "--verbose",
+            "-v",
+            help="Display tool outputs in addition to tool calls.",
+        ),
+    ] = False,
 ) -> None:
     api_key = os.getenv("CODING_AGENT_API_KEY") or os.getenv("OPENAI_API_KEY")
     model_name = model or os.getenv("CODING_AGENT_MODEL")
@@ -146,6 +157,7 @@ def run(
                 api_key=api_key,
                 base_url=effective_base_url,
                 max_steps=max_steps,
+                verbose=verbose,
             )
         )
     except ModelProviderError as exc:

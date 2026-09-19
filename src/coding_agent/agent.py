@@ -1,6 +1,13 @@
 from dataclasses import dataclass
+from time import perf_counter
 
 from coding_agent.domain import ConversationItem, Message, MessageRole
+from coding_agent.events import (
+    AgentEvent,
+    AgentEventHandler,
+    ToolExecutionFinished,
+    ToolExecutionStarted,
+)
 from coding_agent.providers import ModelProvider
 from coding_agent.tools import ToolContext, ToolRegistry
 
@@ -43,6 +50,7 @@ class AgentLoop:
         *,
         system_prompt: str = DEFAULT_SYSTEM_PROMPT,
         max_steps: int = 20,
+        event_handler: AgentEventHandler | None = None,
     ) -> None:
         if not system_prompt.strip():
             raise ValueError("system_prompt must not be blank")
@@ -55,6 +63,7 @@ class AgentLoop:
         self._context = context
         self._system_prompt = system_prompt
         self._max_steps = max_steps
+        self._event_handler = event_handler
 
     async def run(self, task: str) -> AgentRunResult:
         if not task.strip():
@@ -83,13 +92,33 @@ class AgentLoop:
                 )
 
             for tool_call in turn.tool_calls:
+                await self._emit(
+                    ToolExecutionStarted(
+                        step=step,
+                        call=tool_call,
+                    )
+                )
+                started_at = perf_counter()
+
                 tool_result = await self._registry.execute(
                     call=tool_call,
                     context=self._context,
                 )
+
+                elapsed_seconds = perf_counter() - started_at
                 history.append(tool_result)
+
+                await self._emit(
+                    ToolExecutionFinished(
+                        step=step, result=tool_result, elapsed_seconds=elapsed_seconds
+                    )
+                )
 
         raise AgentStepLimitError(
             max_steps=self._max_steps,
             history=tuple(history),
         )
+
+    async def _emit(self, event: AgentEvent) -> None:
+        if self._event_handler is not None:
+            await self._event_handler.handle(event)
