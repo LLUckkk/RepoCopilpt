@@ -3,6 +3,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
+from coding_agent.approval import (
+    ApprovalDecision,
+    ApprovalHandler,
+    ApprovalRequest,
+)
 from coding_agent.domain import ToolSpec
 
 DEFAULT_IGNORED_DIRECTORY_NAMES = frozenset(
@@ -26,6 +31,7 @@ class ToolExecutionError(Exception):  # 表示继承Exception
 @dataclass(frozen=True, slots=True)
 class ToolContext:  # 工具上下文
     workspace_root: Path
+    approval_handler: ApprovalHandler | None = None
 
     def __post_init__(
         self,
@@ -38,6 +44,14 @@ class ToolContext:  # 工具上下文
             raise ValueError("workspace_root must be a directory!")
 
         object.__setattr__(self, "workspace_root", root)
+
+    async def request_approval(
+        self,
+        request: ApprovalRequest,
+    ) -> ApprovalDecision:
+        if self.approval_handler is None:
+            return ApprovalDecision.DENIED
+        return await self.approval_handler.request_approval(request)
 
     def resolve_workspace_path(self, raw_path: str) -> Path:
         """将工作区的相对路径解析为安全的绝对路径"""

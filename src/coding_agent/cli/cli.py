@@ -10,6 +10,7 @@ from coding_agent.agent import (
     AgentRunResult,
     AgentStepLimitError,
 )
+from coding_agent.cli.console_approval import ConsoleApprovalHandler
 from coding_agent.cli.console_events import ConsoleEventHandler
 from coding_agent.providers import (
     ModelProviderError,
@@ -58,7 +59,9 @@ async def _execute_agent(
     agent = AgentLoop(
         provider=provider,
         registry=registry,
-        context=ToolContext(workspace),
+        context=ToolContext(
+            workspace_root=workspace, approval_handler=ConsoleApprovalHandler()
+        ),
         max_steps=max_steps,
         event_handler=ConsoleEventHandler(verbose=verbose),
     )
@@ -144,9 +147,9 @@ def run(
             err=True,
         )
         raise typer.Exit(code=2)
-    typer.echo(f"Workspace: {workspace}")
-    typer.echo(f"Model: {model_name}")
-    typer.echo("Agent is working...")
+    typer.echo(f"Workspace: {workspace}", err=True)
+    typer.echo(f"Model: {model_name}", err=True)
+    typer.echo("Agent is working...", err=True)
 
     try:
         result = asyncio.run(
@@ -184,4 +187,5 @@ def run(
     typer.secho(
         f"Completed in {result.steps} model step(s).",
         fg=typer.colors.BRIGHT_BLACK,
+        err=True,
     )
