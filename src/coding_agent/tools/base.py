@@ -53,7 +53,12 @@ class ToolContext:  # 工具上下文
             return ApprovalDecision.DENIED
         return await self.approval_handler.request_approval(request)
 
-    def resolve_workspace_path(self, raw_path: str) -> Path:
+    def resolve_workspace_path(
+        self,
+        raw_path: str,
+        *,
+        allow_symlinks: bool = True,
+    ) -> Path:
         """将工作区的相对路径解析为安全的绝对路径"""
         if not raw_path.strip():
             raise ToolExecutionError("path must not be blank")
@@ -66,9 +71,23 @@ class ToolContext:  # 工具上下文
         if ".." in relative_path.parts:
             raise ToolExecutionError("parent path components are not allowed")
 
-        candidate = (self.workspace_root / relative_path).resolve(
-            strict=False
-        )  # 路径必须真实存在否则报错
+        unresolved_candidate = self.workspace_root / relative_path
+
+        if not allow_symlinks:
+            current_path = self.workspace_root
+
+            for part in relative_path.parts:
+                if part == ".":
+                    continue
+
+                current_path = current_path / part
+
+                if current_path.is_symlink():
+                    raise ToolExecutionError(
+                        "symbolic links are not allowed for this operation"
+                    )
+
+        candidate = unresolved_candidate.resolve(strict=False)
 
         if not candidate.is_relative_to(self.workspace_root):
             raise ToolExecutionError("path escapes the workspace")
