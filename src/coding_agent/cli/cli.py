@@ -17,9 +17,11 @@ from coding_agent.providers import (
     OpenAICompatibleProvider,
 )
 from coding_agent.tools import (
+    CreateFileTool,
     ListDirectoryTool,
     ReadFileTool,
     ReplaceTextTool,
+    RunCommandTool,
     SearchTextTool,
     ToolContext,
     ToolRegistry,
@@ -55,6 +57,8 @@ async def _execute_agent(
             ReadFileTool(),
             SearchTextTool(),
             ReplaceTextTool(),
+            RunCommandTool(),
+            CreateFileTool(),
         ]
     )
 

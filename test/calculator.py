@@ -4,9 +4,9 @@ def divide(a: float, b: float) -> float:
 
 def average(numbers: list[float]) -> float:
     if not numbers:
-        return 0.0
+        raise ValueError("average() requires at least one number")
     total = sum(numbers)
     return total / len(numbers)
 
 
-print(average([]))
+print(average([1, 2, 3, 4]))
