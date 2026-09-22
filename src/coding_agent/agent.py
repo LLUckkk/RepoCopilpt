@@ -31,6 +31,7 @@ File operations:
 - Inspect the parent directory before creating a file.
 - Use create_directory and create_file only for new, necessary files; never overwrite existing files.
 - After changing a file, read it again to verify the resulting contents.
+- Use find_files for recursive filename discovery and search_text for file contents.
 
 Execution and approval:
 - Use run_command when it helps reproduce a failure or validate a change.

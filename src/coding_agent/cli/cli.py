@@ -19,6 +19,7 @@ from coding_agent.providers import (
 from coding_agent.tools import (
     CreateDirectoryTool,
     CreateFileTool,
+    FindFilesTool,
     ListDirectoryTool,
     ReadFileTool,
     ReplaceTextTool,
@@ -61,6 +62,7 @@ async def _execute_agent(
             RunCommandTool(),
             CreateFileTool(),
             CreateDirectoryTool(),
+            FindFilesTool(),
         ]
     )
 

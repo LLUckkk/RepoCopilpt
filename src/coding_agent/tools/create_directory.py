@@ -92,9 +92,7 @@ class CreateDirectoryTool:
         if current_target != target:
             raise ToolExecutionError("directory path changed while awaiting approval")
         if not target.parent.is_dir():
-            raise ToolExecutionError(
-                "parent directory changed while awaiting approval"
-            )
+            raise ToolExecutionError("parent directory changed while awaiting approval")
 
         try:
             target.mkdir()
