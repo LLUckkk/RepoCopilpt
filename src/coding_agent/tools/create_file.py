@@ -87,6 +87,8 @@ def _write_new_file_exclusively(
         file_descriptor = os.open(target, flags, 0o666)
     except FileExistsError as exc:
         raise ToolExecutionError(f"path already exists: {target.name}") from exc
+    except OSError:
+        raise ToolExecutionError(f"failed to create file: {target.name}")
 
     try:
         with os.fdopen(file_descriptor, "wb") as file:
@@ -119,7 +121,7 @@ class CreateFileTool:
         )
 
         if target.exists():
-            raise ToolExecutionError(f"path already exists: {target.parent.name}")
+            raise ToolExecutionError(f"path already exists: {parsed.path}")
         if not target.parent.is_dir():
             raise ToolExecutionError(
                 f"parent path is not a directory: {target.parent.name}"
@@ -153,4 +155,4 @@ class CreateFileTool:
             content=encoded_content,
         )
 
-        return f"Created {relative_path}with {len(encoded_content)} bytes"
+        return f"Created {relative_path} with {len(encoded_content)} bytes"

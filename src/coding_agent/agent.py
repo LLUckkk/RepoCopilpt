@@ -29,7 +29,7 @@ File operations:
 - Read a file before modifying it.
 - Use replace_text only when old_text exactly matches one unique occurrence.
 - Inspect the parent directory before creating a file.
-- Use create_file only for new, necessary files; never overwrite existing files.
+- Use create_directory and create_file only for new, necessary files; never overwrite existing files.
 - After changing a file, read it again to verify the resulting contents.
 
 Execution and approval:

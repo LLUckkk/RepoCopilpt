@@ -17,6 +17,7 @@ from coding_agent.providers import (
     OpenAICompatibleProvider,
 )
 from coding_agent.tools import (
+    CreateDirectoryTool,
     CreateFileTool,
     ListDirectoryTool,
     ReadFileTool,
@@ -59,6 +60,7 @@ async def _execute_agent(
             ReplaceTextTool(),
             RunCommandTool(),
             CreateFileTool(),
+            CreateDirectoryTool(),
         ]
     )
 
