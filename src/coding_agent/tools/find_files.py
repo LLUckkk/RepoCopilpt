@@ -236,13 +236,13 @@ class FindFilesTool:
 
         if matches:
             output = [
-                (f"Files matching {parsed.pattern!r} under {display_path}:"),
+                f"Files matching {parsed.pattern!r} under {display_path}:",
                 *matches,
                 f"Scanned {scanned_files} file entries.",
             ]
         else:
             output = [
-                (f"No files matching {parsed.pattern!r} under {display_path}."),
+                f"No files matching {parsed.pattern!r} under {display_path}.",
                 f"Scanned {scanned_files} file entries.",
             ]
 

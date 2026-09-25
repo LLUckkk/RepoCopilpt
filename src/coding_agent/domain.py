@@ -37,9 +37,16 @@ class ToolResult(StrictModel):  # Runtime执行工具之后的结果
     is_error: bool = False
 
 
+class TokenUsage(StrictModel):
+    prompt_tokens: int = Field(ge=0)
+    completion_tokens: int = Field(ge=0)
+    total_tokens: int = Field(ge=0)
+
+
 class ModelTurn(StrictModel):  # 模型一次响应的完整结果
     final_text: str | None = None
     tool_calls: list[ToolCall] = Field(default_factory=list)
+    usage: TokenUsage | None = None
 
     @model_validator(mode="after")
     def validate_outcome(

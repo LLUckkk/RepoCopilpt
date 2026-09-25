@@ -1,10 +1,13 @@
 from dataclasses import dataclass
 from time import perf_counter
 
+from coding_agent.context import estimate_context_usage
 from coding_agent.domain import ConversationItem, Message, MessageRole
 from coding_agent.events import (
     AgentEvent,
     AgentEventHandler,
+    ModelRequestFinished,
+    ModelRequestStarted,
     ToolExecutionFinished,
     ToolExecutionStarted,
 )
@@ -104,9 +107,34 @@ class AgentLoop:
         ]
 
         for step in range(1, self._max_steps + 1):
+            context_usage = estimate_context_usage(
+                history=history,
+                tools=self._registry.specs,
+            )
+
+            await self._emit(
+                ModelRequestStarted(
+                    step=step,
+                    context_usage=context_usage,
+                )
+            )
+
+            model_started_at = perf_counter()
+
             turn = await self._provider.generate(
                 history=tuple(history), tools=self._registry.specs
             )
+
+            model_elapsed_seconds = perf_counter() - model_started_at
+
+            await self._emit(
+                ModelRequestFinished(
+                    step=step,
+                    usage=turn.usage,
+                    elapsed_seconds=model_elapsed_seconds,
+                )
+            )
+
             history.append(turn)
 
             if turn.final_text is not None:

@@ -4,6 +4,8 @@ import typer
 
 from coding_agent.events import (
     AgentEvent,
+    ModelRequestFinished,
+    ModelRequestStarted,
     ToolExecutionFinished,
     ToolExecutionStarted,
 )
@@ -24,6 +26,44 @@ class ConsoleEventHandler:
         self._verbose = verbose
 
     async def handle(self, event: AgentEvent) -> None:
+        if isinstance(event, ModelRequestStarted):
+            if self._verbose:
+                usage = event.context_usage
+
+                typer.secho(
+                    (
+                        f"[context] step={event.step}"
+                        f"estimated={usage.estimated_tokens}"
+                        f"history={usage.history_tokens}"
+                        f"tools={usage.tool_tokens}"
+                        f"items={usage.history_items}"
+                    ),
+                    fg=typer.colors.MAGENTA,
+                    err=True,
+                )
+            return
+
+        if isinstance(event, ModelRequestFinished):
+            if self._verbose:
+                if event.usage is None:
+                    usage_text = "usage=unavailable"
+                else:
+                    usage_text = (
+                        f"prompt={event.usage.prompt_tokens} "
+                        f"completion={event.usage.completion_tokens} "
+                        f"total={event.usage.total_tokens}"
+                    )
+                typer.secho(
+                    (
+                        f"[model] step={event.step} "
+                        f"{usage_text} "
+                        f"({event.elapsed_seconds:.3f}s)"
+                    ),
+                    fg=typer.colors.BLUE,
+                    err=True,
+                )
+            return
+
         if isinstance(event, ToolExecutionStarted):
             arguments = json.dumps(
                 event.call.arguments,
@@ -37,7 +77,7 @@ class ConsoleEventHandler:
             )
 
             typer.secho(
-                (f"[tool:start] step={event.step} {event.call.name} {arguments}"),
+                f"[tool:start] step={event.step} {event.call.name} {arguments}",
                 fg=typer.colors.CYAN,
                 err=True,
             )

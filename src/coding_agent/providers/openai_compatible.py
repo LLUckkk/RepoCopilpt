@@ -9,6 +9,7 @@ from coding_agent.domain import (
     ConversationItem,
     Message,
     ModelTurn,
+    TokenUsage,
     ToolCall,
     ToolResult,
     ToolSpec,
@@ -139,6 +140,22 @@ class OpenAICompatibleProvider:
         if not response.choices:
             raise ModelProviderError("model response did not contain any choices")
 
+        token_usage: TokenUsage | None = None
+
+        if response.usage is not None:
+            prompt_tokens = response.usage.prompt_tokens or 0
+            completion_tokens = response.usage.completion_tokens or 0
+            total_tokens = response.usage.total_tokens or 0
+
+            if total_tokens is None:
+                total_tokens = prompt_tokens + completion_tokens
+
+            token_usage = TokenUsage(
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
+            )
+
         message = response.choices[0].message
 
         if message.tool_calls:
@@ -164,7 +181,7 @@ class OpenAICompatibleProvider:
                         )
                     )
 
-                return ModelTurn(tool_calls=tool_calls)
+                return ModelTurn(tool_calls=tool_calls, usage=token_usage)
             except json.JSONDecodeError as exc:
                 raise ModelProviderError(
                     "model returned invalid JSON tool arguments"
@@ -183,7 +200,7 @@ class OpenAICompatibleProvider:
                 raise ModelProviderError("model returned neither text or tool calls")
 
         try:
-            return ModelTurn(final_text=content)
+            return ModelTurn(final_text=content, usage=token_usage)
         except ValidationError as exc:
             raise ModelProviderError("model returned invalid final text") from exc
 
