@@ -18,20 +18,6 @@ class ToolExecutionFinished:
     elapsed_seconds: float
 
 
-type AgentEvent = (
-    ToolExecutionStarted
-    | ToolExecutionFinished
-    | ModelRequestStarted
-    | ModelRequestFinished
-)
-
-
-class AgentEventHandler(Protocol):
-    async def handle(self, event: AgentEvent) -> None:
-        """Handle an event emitted by AgentLoop."""
-        ...
-
-
 @dataclass(frozen=True, slots=True)
 class ModelRequestStarted:
     step: int
@@ -43,3 +29,27 @@ class ModelRequestFinished:
     step: int
     usage: TokenUsage | None
     elapsed_seconds: float
+
+
+@dataclass(frozen=True, slots=True)
+class ContextBudgetWarning:
+    step: int
+    context_usage: ContextUsageEstimate
+    max_context_tokens: int
+    warning_ratio: float
+
+
+type AgentEvent = (
+    ToolExecutionStarted
+    | ToolExecutionFinished
+    | ModelRequestStarted
+    | ModelRequestFinished
+    | ContextBudgetWarning
+)
+
+
+class AgentEventHandler(Protocol):
+    async def handle(self, event: AgentEvent) -> None:
+        """Handle an event emitted by AgentLoop."""
+        ...
+

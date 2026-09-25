@@ -45,6 +45,7 @@ async def _execute_agent(
     api_key: str,
     base_url: str | None,
     max_steps: int,
+    max_context_tokens: int | None,
     verbose: bool,
 ) -> AgentRunResult:
     provider = OpenAICompatibleProvider(
@@ -73,6 +74,7 @@ async def _execute_agent(
             workspace_root=workspace, approval_handler=ConsoleApprovalHandler()
         ),
         max_steps=max_steps,
+        max_context_tokens=max_context_tokens,
         event_handler=ConsoleEventHandler(verbose=verbose),
     )
 
@@ -128,6 +130,17 @@ def run(
             max=200,
         ),
     ] = 20,
+    max_context_tokens: Annotated[
+        int | None,
+        typer.Option(
+            "--max-context-tokens",
+            help=(
+                    "Estimated input-token budget. "
+                    "Emits a warning when usage reaches 80 percent."
+            ),
+            min=1_000,
+        ),
+    ] = None,
     verbose: Annotated[
         bool,
         typer.Option(
@@ -170,6 +183,7 @@ def run(
                 api_key=api_key,
                 base_url=effective_base_url,
                 max_steps=max_steps,
+                max_context_tokens=max_context_tokens,
                 verbose=verbose,
             )
         )

@@ -145,7 +145,7 @@ class OpenAICompatibleProvider:
         if response.usage is not None:
             prompt_tokens = response.usage.prompt_tokens or 0
             completion_tokens = response.usage.completion_tokens or 0
-            total_tokens = response.usage.total_tokens or 0
+            total_tokens = response.usage.total_tokens
 
             if total_tokens is None:
                 total_tokens = prompt_tokens + completion_tokens

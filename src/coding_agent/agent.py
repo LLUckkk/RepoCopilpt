@@ -10,6 +10,7 @@ from coding_agent.events import (
     ModelRequestStarted,
     ToolExecutionFinished,
     ToolExecutionStarted,
+    ContextBudgetWarning,
 )
 from coding_agent.providers import ModelProvider
 from coding_agent.tools import ToolContext, ToolRegistry
@@ -47,6 +48,7 @@ Completion:
 - Never claim a change was verified unless validation was actually run.
 - Return a concise final answer describing the result and any unverified parts.
 """.strip()
+DEFAULT_CONTEXT_WARNING_RATIO = 0.8
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,6 +78,8 @@ class AgentLoop:
         *,
         system_prompt: str = DEFAULT_SYSTEM_PROMPT,
         max_steps: int = 20,
+        max_context_tokens: int | None = None,
+        context_warning_ratio: float = DEFAULT_CONTEXT_WARNING_RATIO,
         event_handler: AgentEventHandler | None = None,
     ) -> None:
         if not system_prompt.strip():
@@ -84,12 +88,19 @@ class AgentLoop:
         if max_steps < 1:
             raise ValueError("max_steps must be at least 1")
 
+        if max_context_tokens is not None and max_context_tokens < 1_000:
+            raise ValueError("max_context_tokens must be at least 1_000")
+        if not 0 < context_warning_ratio < 1:
+            raise ValueError("context_warning_ratio must be between 0 and 1")
+
         self._provider = provider
         self._registry = registry
         self._context = context
         self._system_prompt = system_prompt
         self._max_steps = max_steps
         self._event_handler = event_handler
+        self._max_context_tokens = max_context_tokens
+        self._context_warning_ratio = context_warning_ratio
 
     async def run(self, task: str) -> AgentRunResult:
         if not task.strip():
@@ -106,11 +117,28 @@ class AgentLoop:
             ),
         ]
 
+        context_warning_emitted = False
+
         for step in range(1, self._max_steps + 1):
             context_usage = estimate_context_usage(
                 history=history,
                 tools=self._registry.specs,
             )
+
+            if (
+                self._max_context_tokens is not None
+                and not context_warning_emitted
+                and context_usage.estimated_tokens >= self._max_context_tokens * self._context_warning_ratio
+            ):
+                await self._emit(
+                    ContextBudgetWarning(
+                        step=step,
+                        context_usage=context_usage,
+                        max_context_tokens=self._max_context_tokens,
+                        warning_ratio=self._context_warning_ratio
+                    )
+                )
+                context_warning_emitted = True
 
             await self._emit(
                 ModelRequestStarted(

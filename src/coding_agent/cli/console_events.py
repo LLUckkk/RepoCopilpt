@@ -8,6 +8,7 @@ from coding_agent.events import (
     ModelRequestStarted,
     ToolExecutionFinished,
     ToolExecutionStarted,
+    ContextBudgetWarning,
 )
 
 MAX_ARGUMENT_DISPLAY_CHARS = 400
@@ -26,16 +27,39 @@ class ConsoleEventHandler:
         self._verbose = verbose
 
     async def handle(self, event: AgentEvent) -> None:
+        if isinstance(event, ContextBudgetWarning):
+            estimated_tokens = event.context_usage.estimated_tokens
+            utilization = estimated_tokens / event.max_context_tokens
+            remaining_tokens = event.max_context_tokens - estimated_tokens
+            if remaining_tokens >= 0:
+                remaining_text = f"remaining={remaining_tokens}"
+                color = typer.colors.YELLOW
+            else:
+                remaining_text = f"over_by={abs(remaining_tokens)}"
+                color = typer.colors.RED
+            typer.secho(
+                (
+                    f"[context:warning] step={event.step} "
+                    f"estimated={estimated_tokens} "
+                    f"budget={event.max_context_tokens} "
+                    f"usage={utilization:.1%} "
+                    f"{remaining_text}"
+                ),
+                fg=color,
+                bold=True,
+                err=True,
+            )
+            return
         if isinstance(event, ModelRequestStarted):
             if self._verbose:
                 usage = event.context_usage
 
                 typer.secho(
                     (
-                        f"[context] step={event.step}"
-                        f"estimated={usage.estimated_tokens}"
-                        f"history={usage.history_tokens}"
-                        f"tools={usage.tool_tokens}"
+                        f"[context] step={event.step} "
+                        f"estimated={usage.estimated_tokens} "
+                        f"history={usage.history_tokens} "
+                        f"tools={usage.tool_tokens} "
                         f"items={usage.history_items}"
                     ),
                     fg=typer.colors.MAGENTA,
@@ -88,13 +112,13 @@ class ConsoleEventHandler:
 
             if result.is_error:
                 typer.secho(
-                    (f"[tool:error] {result.name} ({event.elapsed_seconds:.3f}s)"),
+                    f"[tool:error] {result.name} ({event.elapsed_seconds:.3f}s)",
                     fg=typer.colors.RED,
                     err=True,
                 )
             else:
                 typer.secho(
-                    (f"[tool:ok] {result.name} ({event.elapsed_seconds:.3f}s)"),
+                    f"[tool:ok] {result.name} ({event.elapsed_seconds:.3f}s)",
                     fg=typer.colors.GREEN,
                     err=True,
                 )
