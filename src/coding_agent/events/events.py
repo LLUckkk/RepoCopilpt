@@ -49,6 +49,28 @@ class ContextCompacted:
     target_reached: bool
 
 
+@dataclass(frozen=True, slots=True)
+class ContextSummaryStarted:
+    step: int
+    new_blocks: int
+
+
+@dataclass(frozen=True, slots=True)
+class ContextSummaryFinished:
+    step: int
+    total_summarized_blocks: int
+    memory_chars: int
+    usage: TokenUsage | None
+    elapsed_seconds: float
+
+
+@dataclass(frozen=True, slots=True)
+class ContextSummaryFailed:
+    step: int
+    attempted_blocks: int
+    error: str
+
+
 type AgentEvent = (
     ToolExecutionStarted
     | ToolExecutionFinished
@@ -56,6 +78,9 @@ type AgentEvent = (
     | ModelRequestFinished
     | ContextBudgetWarning
     | ContextCompacted
+    | ContextSummaryStarted
+    | ContextSummaryFinished
+    | ContextSummaryFailed
 )
 
 

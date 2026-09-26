@@ -6,6 +6,9 @@ from coding_agent.events import (
     AgentEvent,
     ContextBudgetWarning,
     ContextCompacted,
+    ContextSummaryFailed,
+    ContextSummaryFinished,
+    ContextSummaryStarted,
     ModelRequestFinished,
     ModelRequestStarted,
     ToolExecutionFinished,
@@ -151,6 +154,49 @@ class ConsoleEventHandler:
                     f"status={status}"
                 ),
                 fg=typer.colors.MAGENTA,
+                bold=True,
+                err=True,
+            )
+            return
+
+        if isinstance(event, ContextSummaryStarted):
+            typer.secho(
+                (
+                    f"[context:summary:start] step={event.step} "
+                    f"new_blocks={event.new_blocks}"
+                ),
+                fg=typer.colors.BLUE,
+                err=True,
+            )
+            return
+
+        if isinstance(event, ContextSummaryFinished):
+            if event.usage is None:
+                usage_text = "usage=unavailable"
+            else:
+                usage_text = f"tokens={event.usage.total_tokens}"
+
+            typer.secho(
+                (
+                    f"[context:summary:ok] step={event.step} "
+                    f"total_blocks={event.total_summarized_blocks} "
+                    f"memory_chars={event.memory_chars} "
+                    f"{usage_text} "
+                    f"({event.elapsed_seconds:.3f}s)"
+                ),
+                fg=typer.colors.GREEN,
+                err=True,
+            )
+            return
+
+        if isinstance(event, ContextSummaryFailed):
+            typer.secho(
+                (
+                    f"[context:summary:error] step={event.step} "
+                    f"attempted_blocks={event.attempted_blocks} "
+                    f"error={event.error}"
+                ),
+                fg=typer.colors.RED,
                 bold=True,
                 err=True,
             )
