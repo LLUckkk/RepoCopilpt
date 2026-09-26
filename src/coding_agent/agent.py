@@ -128,6 +128,7 @@ class AgentLoop:
 
         context_warning_emitted = False
         last_reported_removed_blocks = 0
+        compaction_failure_reported = False
 
         for step in range(1, self._max_steps + 1):
             full_context_usage = estimate_context_usage(
@@ -161,7 +162,16 @@ class AgentLoop:
                 )
                 request_history = compaction.history
 
-                if compaction.removed_blocks > last_reported_removed_blocks:
+                should_report_compaction = (
+                    compaction.removed_blocks > last_reported_removed_blocks
+                    or (
+                        compaction.compaction_triggered
+                        and not compaction.target_reached
+                        and not compaction_failure_reported
+                    )
+                )
+
+                if should_report_compaction:
                     await self._emit(
                         ContextCompacted(
                             step=step,
@@ -172,6 +182,11 @@ class AgentLoop:
                             target_reached=compaction.target_reached,
                         )
                     )
+
+                if compaction.compaction_triggered:
+                    compaction_failure_reported = not compaction.target_reached
+                else:
+                    compaction_failure_reported = False
                 last_reported_removed_blocks = compaction.removed_blocks
 
             request_context_usage = estimate_context_usage(
@@ -188,7 +203,7 @@ class AgentLoop:
             model_started_at = perf_counter()
 
             turn = await self._provider.generate(
-                history=tuple(history), tools=self._registry.specs
+                history=request_history, tools=self._registry.specs
             )
 
             model_elapsed_seconds = perf_counter() - model_started_at

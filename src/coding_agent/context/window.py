@@ -26,6 +26,7 @@ class ContextCompactionResult:
     history: tuple[ConversationItem, ...]
     before_usage: ContextUsageEstimate
     after_usage: ContextUsageEstimate
+    compaction_triggered: bool
     removed_blocks: int
     retained_blocks: int
     target_reached: bool
@@ -168,18 +169,20 @@ class SlidingWindowContextManager:
         trigger_tokens = int(self._trigger_ratio * self._max_context_tokens)
         target_tokens = int(self._target_ratio * self._max_context_tokens)
 
+        prefix, blocks = _split_history(original_history)
+
         if before_usage.estimated_tokens < trigger_tokens:
             return ContextCompactionResult(
                 history=original_history,
                 before_usage=before_usage,
                 after_usage=before_usage,
+                compaction_triggered=False,
                 removed_blocks=0,
-                retained_blocks=0,
-                target_reached=True,
+                retained_blocks=len(blocks),
+                target_reached=before_usage.estimated_tokens <= target_tokens,
             )
 
         # 触发压缩tokens数量：
-        prefix, blocks = _split_history(original_history)
         max_removable_blocks = max(0, len(blocks) - self._min_recent_blocks)
         best_history = original_history
         best_usage = before_usage
@@ -206,6 +209,7 @@ class SlidingWindowContextManager:
             history=best_history,
             before_usage=before_usage,
             after_usage=best_usage,
+            compaction_triggered=True,
             removed_blocks=removed_blocks,
             retained_blocks=len(blocks) - removed_blocks,
             target_reached=best_usage.estimated_tokens <= target_tokens,
