@@ -1,16 +1,17 @@
 from dataclasses import dataclass
 from time import perf_counter
 
-from coding_agent.context import estimate_context_usage
+from coding_agent.context import SlidingWindowContextManager, estimate_context_usage
 from coding_agent.domain import ConversationItem, Message, MessageRole
 from coding_agent.events import (
     AgentEvent,
     AgentEventHandler,
+    ContextBudgetWarning,
+    ContextCompacted,
     ModelRequestFinished,
     ModelRequestStarted,
     ToolExecutionFinished,
     ToolExecutionStarted,
-    ContextBudgetWarning,
 )
 from coding_agent.providers import ModelProvider
 from coding_agent.tools import ToolContext, ToolRegistry
@@ -101,6 +102,14 @@ class AgentLoop:
         self._event_handler = event_handler
         self._max_context_tokens = max_context_tokens
         self._context_warning_ratio = context_warning_ratio
+        self._context_manager = (
+            SlidingWindowContextManager(
+                max_context_tokens=max_context_tokens,
+                trigger_ratio=context_warning_ratio,
+            )
+            if max_context_tokens is not None
+            else None
+        )
 
     async def run(self, task: str) -> AgentRunResult:
         if not task.strip():
@@ -118,9 +127,10 @@ class AgentLoop:
         ]
 
         context_warning_emitted = False
+        last_reported_removed_blocks = 0
 
         for step in range(1, self._max_steps + 1):
-            context_usage = estimate_context_usage(
+            full_context_usage = estimate_context_usage(
                 history=history,
                 tools=self._registry.specs,
             )
@@ -128,22 +138,50 @@ class AgentLoop:
             if (
                 self._max_context_tokens is not None
                 and not context_warning_emitted
-                and context_usage.estimated_tokens >= self._max_context_tokens * self._context_warning_ratio
+                and full_context_usage.estimated_tokens
+                >= self._max_context_tokens * self._context_warning_ratio
             ):
                 await self._emit(
                     ContextBudgetWarning(
                         step=step,
-                        context_usage=context_usage,
+                        context_usage=full_context_usage,
                         max_context_tokens=self._max_context_tokens,
-                        warning_ratio=self._context_warning_ratio
+                        warning_ratio=self._context_warning_ratio,
                     )
                 )
                 context_warning_emitted = True
 
+            request_history: tuple[ConversationItem, ...] = tuple(
+                history
+            )  # request history指的是模型请求时发送的history
+
+            if self._context_manager is not None:
+                compaction = self._context_manager.prepare(
+                    history=history, tools=self._registry.specs
+                )
+                request_history = compaction.history
+
+                if compaction.removed_blocks > last_reported_removed_blocks:
+                    await self._emit(
+                        ContextCompacted(
+                            step=step,
+                            before_usage=compaction.before_usage,
+                            after_usage=compaction.after_usage,
+                            removed_blocks=compaction.removed_blocks,
+                            retained_blocks=compaction.retained_blocks,
+                            target_reached=compaction.target_reached,
+                        )
+                    )
+                last_reported_removed_blocks = compaction.removed_blocks
+
+            request_context_usage = estimate_context_usage(
+                history=request_history, tools=self._registry.specs
+            )
+
             await self._emit(
                 ModelRequestStarted(
                     step=step,
-                    context_usage=context_usage,
+                    context_usage=request_context_usage,
                 )
             )
 

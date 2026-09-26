@@ -4,11 +4,12 @@ import typer
 
 from coding_agent.events import (
     AgentEvent,
+    ContextBudgetWarning,
+    ContextCompacted,
     ModelRequestFinished,
     ModelRequestStarted,
     ToolExecutionFinished,
     ToolExecutionStarted,
-    ContextBudgetWarning,
 )
 
 MAX_ARGUMENT_DISPLAY_CHARS = 400
@@ -131,3 +132,26 @@ class ConsoleEventHandler:
 
                 for line in output.splitlines():
                     typer.echo(f"    {line}", err=True)
+            return
+
+        if isinstance(event, ContextCompacted):
+            before = event.before_usage.estimated_tokens
+            after = event.after_usage.estimated_tokens
+            saved = before - after
+
+            status = "target_reached" if event.target_reached else "best-effort"
+
+            typer.secho(
+                (
+                    f"[context:compact] step={event.step} "
+                    f"blocks_removed={event.removed_blocks} "
+                    f"blocks_retained={event.retained_blocks} "
+                    f"tokens={before}->{after} "
+                    f"saved={saved} "
+                    f"status={status}"
+                ),
+                fg=typer.colors.MAGENTA,
+                bold=True,
+                err=True,
+            )
+            return

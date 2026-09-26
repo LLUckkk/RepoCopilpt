@@ -39,12 +39,23 @@ class ContextBudgetWarning:
     warning_ratio: float
 
 
+@dataclass(frozen=True, slots=True)
+class ContextCompacted:
+    step: int
+    before_usage: ContextUsageEstimate
+    after_usage: ContextUsageEstimate
+    removed_blocks: int
+    retained_blocks: int
+    target_reached: bool
+
+
 type AgentEvent = (
     ToolExecutionStarted
     | ToolExecutionFinished
     | ModelRequestStarted
     | ModelRequestFinished
     | ContextBudgetWarning
+    | ContextCompacted
 )
 
 
@@ -52,4 +63,3 @@ class AgentEventHandler(Protocol):
     async def handle(self, event: AgentEvent) -> None:
         """Handle an event emitted by AgentLoop."""
         ...
-

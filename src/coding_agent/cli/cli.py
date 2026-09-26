@@ -135,8 +135,9 @@ def run(
         typer.Option(
             "--max-context-tokens",
             help=(
-                    "Estimated input-token budget. "
-                    "Emits a warning when usage reaches 80 percent."
+                "Estimated input-token budget. "
+                "Warns at 80 percent and compacts older "
+                "completed interactions when necessary."
             ),
             min=1_000,
         ),
