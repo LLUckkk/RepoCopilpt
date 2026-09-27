@@ -4,6 +4,10 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+from prompt_toolkit import PromptSession
+from prompt_toolkit.formatted_text import FormattedText
+from prompt_toolkit.history import InMemoryHistory
+from prompt_toolkit.styles import Style
 
 from coding_agent.agent import (
     AgentLoop,
@@ -12,7 +16,12 @@ from coding_agent.agent import (
 )
 from coding_agent.cli.console_approval import ConsoleApprovalHandler
 from coding_agent.cli.console_events import ConsoleEventHandler
-from coding_agent.cli.ui import render_final_answer, render_header
+from coding_agent.cli.ui import (
+    render_final_answer,
+    render_header,
+    render_interactive_help,
+    render_session_notice,
+)
 from coding_agent.providers import (
     ModelProviderError,
     OpenAICompatibleProvider,
@@ -33,14 +42,96 @@ from coding_agent.tools import (
 app = typer.Typer(
     name="coding-agent",
     help="A local coding agent operating inside a restricted workspace.",
-    no_args_is_help=True,
+    no_args_is_help=False,
     add_completion=False,
 )
 
 
+INTERACTIVE_PROMPT_STYLE = Style.from_dict(
+    {
+        "prompt": "ansicyan bold",
+    }
+)
+
+
+async def _run_interactive_session(
+    agent: AgentLoop,
+) -> None:
+    input_session: PromptSession[str] = PromptSession(
+        history=InMemoryHistory(),
+    )
+    agent_session = agent.create_session()
+    render_interactive_help()
+
+    while True:
+        try:
+            user_input = await input_session.prompt_async(
+                FormattedText(
+                    [
+                        ("class:prompt", "❯ "),
+                    ]
+                ),
+                style=INTERACTIVE_PROMPT_STYLE,
+            )
+        except KeyboardInterrupt:
+            render_session_notice(
+                "Input cancelled. Use /exit to leave.",
+                style="warning",
+            )
+            continue
+        except EOFError:
+            render_session_notice("Session ended.")
+            return
+
+        task = user_input.strip()
+        if not task:
+            continue
+
+        command = task.casefold()
+        if command in {"/exit", "/quit"}:
+            render_session_notice("Session ended.")
+            return
+        if command == "/help":
+            render_interactive_help()
+            continue
+        if command == "/clear":
+            agent_session = agent.create_session()
+            render_session_notice(
+                "Conversation context cleared.",
+                style="success",
+            )
+            continue
+        if command.startswith("/"):
+            render_session_notice(
+                f"Unknown command: {task}",
+                style="warning",
+            )
+            continue
+
+        try:
+            result = await agent.run(task, session=agent_session)
+        except ModelProviderError as exc:
+            render_session_notice(
+                f"Model provider error: {exc}",
+                style="error",
+            )
+            continue
+        except AgentStepLimitError as exc:
+            render_session_notice(
+                str(exc),
+                style="error",
+            )
+            continue
+
+        render_final_answer(
+            text=result.final_text,
+            steps=result.steps,
+        )
+
+
 async def _execute_agent(
     *,
-    task: str,
+    task: str | None,
     workspace: Path,
     model: str,
     api_key: str,
@@ -48,7 +139,7 @@ async def _execute_agent(
     max_steps: int,
     max_context_tokens: int | None,
     verbose: bool,
-) -> AgentRunResult:
+) -> AgentRunResult | None:
     provider = OpenAICompatibleProvider(
         model=model,
         api_key=api_key,
@@ -82,7 +173,12 @@ async def _execute_agent(
     )
 
     try:
-        return await agent.run(task)
+        # 兼容两种模式，如果第一次输入了指令，就按照单次运行，否则就是启动session
+        if task is not None:
+            return await agent.run(task)
+
+        await _run_interactive_session(agent)
+        return None
     finally:
         event_handler.close()
         await provider.close()
@@ -91,9 +187,11 @@ async def _execute_agent(
 @app.command()
 def run(
     task: Annotated[
-        str,
-        typer.Argument(help="The coding task that the agent should investigate"),
-    ],  # Argument是位置参数，默认必须
+        str | None,
+        typer.Argument(
+            help="Optional coding task. If omitted, starts an interactive session."
+        ),
+    ] = None,  # Argument是位置参数，默认必须
     workspace: Annotated[
         Path,
         typer.Option(
@@ -209,7 +307,8 @@ def run(
         typer.echo("\nCancelled.", err=True)
         raise typer.Exit(code=130) from exc
 
-    render_final_answer(
-        text=result.final_text,
-        steps=result.steps,
-    )
+    if result is not None:
+        render_final_answer(
+            text=result.final_text,
+            steps=result.steps,
+        )

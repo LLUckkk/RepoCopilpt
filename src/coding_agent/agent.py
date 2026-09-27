@@ -69,6 +69,20 @@ class AgentRunResult:
     history: tuple[ConversationItem, ...]  # tuple表示只读不可变
 
 
+@dataclass(slots=True)
+class AgentSession:
+    history: list[ConversationItem]  # 完整对话历史
+    working_memory: str | None = None  # 已生成的工作记忆
+    summarized_blocks: int = 0
+    last_summary_attempted_blocks: int = 0
+    context_warning_emitted: bool = False
+    last_reported_removed_blocks: int = 0
+    compaction_failure_reported: bool = False
+
+    def snapshot(self) -> tuple[ConversationItem, ...]:
+        return tuple(self.history)
+
+
 class AgentStepLimitError(RuntimeError):
     def __init__(
         self,
@@ -126,30 +140,26 @@ class AgentLoop:
             else None
         )
 
-    async def run(self, task: str) -> AgentRunResult:
+    def create_session(self) -> AgentSession:
+        return AgentSession(
+            history=[Message(role=MessageRole.SYSTEM, content=self._system_prompt)]
+        )
+
+    async def run(
+        self, task: str, *, session: AgentSession | None = None
+    ) -> AgentRunResult:
         if not task.strip():
             raise ValueError("task must not be blank")
 
-        history: list[ConversationItem] = [
-            Message(
-                role=MessageRole.SYSTEM,
-                content=self._system_prompt,
-            ),
+        active_session = session or self.create_session()
+        active_session.history.append(
             Message(
                 role=MessageRole.USER,
                 content=task,
-            ),
-        ]
+            )
+        )  # 在create session的时候就已经在历史里添加了system prompt，所以只需要加上用户信息
 
-        context_warning_emitted = False
-        last_reported_removed_blocks = 0
-        compaction_failure_reported = False
-        should_report_compaction = False
-        working_memory: str | None = None  # 目前已经生成的摘要
-        summarized_blocks = 0  # 摘要成功覆盖了多少个旧block
-        last_summary_attempted_blocks = (
-            0  # 上一次尝试处理到哪里，避免每个摘要失败后每个循环都重复请求
-        )
+        history = active_session.history
 
         for step in range(1, self._max_steps + 1):
             full_context_usage = estimate_context_usage(
@@ -159,7 +169,7 @@ class AgentLoop:
 
             if (
                 self._max_context_tokens is not None
-                and not context_warning_emitted
+                and not active_session.context_warning_emitted
                 and full_context_usage.estimated_tokens
                 >= self._max_context_tokens * self._context_warning_ratio
             ):
@@ -171,7 +181,7 @@ class AgentLoop:
                         warning_ratio=self._context_warning_ratio,
                     )
                 )
-                context_warning_emitted = True
+                active_session.context_warning_emitted = True
 
             request_history: tuple[ConversationItem, ...] = tuple(
                 history
@@ -186,12 +196,17 @@ class AgentLoop:
 
                 should_update_summary = (
                     self._working_memory_summarizer is not None
-                    and compaction.removed_blocks > last_summary_attempted_blocks
+                    and compaction.removed_blocks
+                    > active_session.last_summary_attempted_blocks
                 )
 
                 if should_update_summary:
-                    new_blocks = compaction.removed_block_items[summarized_blocks:]
-                    last_summary_attempted_blocks = compaction.removed_blocks
+                    new_blocks = compaction.removed_block_items[
+                        active_session.summarized_blocks :
+                    ]
+                    active_session.last_summary_attempted_blocks = (
+                        compaction.removed_blocks
+                    )
 
                     await self._emit(
                         ContextSummaryStarted(step=step, new_blocks=len(new_blocks))
@@ -202,20 +217,20 @@ class AgentLoop:
                     try:
                         summary_result = (
                             await self._working_memory_summarizer.summarize(
-                                existing_memory=working_memory,
+                                existing_memory=active_session.working_memory,
                                 new_blocks=new_blocks,
                             )
                         )
 
                         summary_elapsed_seconds = perf_counter() - summary_start_at
-                        working_memory = summary_result.text
-                        summarized_blocks = compaction.removed_blocks
+                        active_session.working_memory = summary_result.text
+                        active_session.summarized_blocks = compaction.removed_blocks
 
                         await self._emit(
                             ContextSummaryFinished(
                                 step=step,
-                                total_summarized_blocks=summarized_blocks,
-                                memory_chars=len(working_memory),
+                                total_summarized_blocks=active_session.summarized_blocks,
+                                memory_chars=len(active_session.working_memory),
                                 usage=summary_result.usage,
                                 elapsed_seconds=summary_elapsed_seconds,
                             )
@@ -229,10 +244,13 @@ class AgentLoop:
                             )
                         )
 
-                if working_memory is not None and compaction.removed_blocks > 0:
+                if (
+                    active_session.working_memory is not None
+                    and compaction.removed_blocks > 0
+                ):
                     request_history = inject_working_memory(
                         history=request_history,
-                        working_memory=working_memory,
+                        working_memory=active_session.working_memory,
                     )
             request_context_usage = estimate_context_usage(
                 history=request_history, tools=self._registry.specs
@@ -243,11 +261,12 @@ class AgentLoop:
                     request_context_usage.estimated_tokens <= compaction.target_tokens
                 )
                 should_report_compaction = (
-                    compaction.removed_blocks > last_reported_removed_blocks
+                    compaction.removed_blocks
+                    > active_session.last_reported_removed_blocks
                     or (
                         compaction.compaction_triggered
                         and not effective_target_reached
-                        and not compaction_failure_reported
+                        and not active_session.compaction_failure_reported
                     )
                 )
 
@@ -263,10 +282,12 @@ class AgentLoop:
                         )
                     )
                 if compaction.compaction_triggered:
-                    compaction_failure_reported = not effective_target_reached
+                    active_session.compaction_failure_reported = (
+                        not effective_target_reached
+                    )
                 else:
-                    compaction_failure_reported = False
-                last_reported_removed_blocks = compaction.removed_blocks
+                    active_session.compaction_failure_reported = False
+                active_session.last_reported_removed_blocks = compaction.removed_blocks
 
             await self._emit(
                 ModelRequestStarted(
@@ -295,7 +316,9 @@ class AgentLoop:
 
             if turn.final_text is not None:
                 return AgentRunResult(
-                    final_text=turn.final_text, steps=step, history=tuple(history)
+                    final_text=turn.final_text,
+                    steps=step,
+                    history=active_session.snapshot(),
                 )
 
             for tool_call in turn.tool_calls:
@@ -323,7 +346,7 @@ class AgentLoop:
 
         raise AgentStepLimitError(
             max_steps=self._max_steps,
-            history=tuple(history),
+            history=active_session.snapshot(),
         )
 
     async def _emit(self, event: AgentEvent) -> None:

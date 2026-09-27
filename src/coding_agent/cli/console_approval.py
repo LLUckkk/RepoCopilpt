@@ -1,4 +1,3 @@
-
 from rich.console import Group, RenderableType
 from rich.panel import Panel
 from rich.prompt import Confirm

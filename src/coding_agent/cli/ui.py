@@ -5,6 +5,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
 from rich.theme import Theme
 
 CODING_AGENT_THEME = Theme(
@@ -72,3 +73,32 @@ def render_final_answer(*, text: str, steps: int) -> None:
             padding=(1, 2),
         )
     )
+
+
+def render_interactive_help() -> None:
+    commands = Table.grid(padding=(0, 2))
+    commands.add_column(style="tool.name")
+
+    commands.add_row("/help", "Show available commands")
+    commands.add_row("/clear", "Clear conversation context")
+    commands.add_row("/exit", "Exit the interactive session")
+
+    ui_console.print(
+        Panel(
+            commands,
+            title="[brand]Interactive session[/brand]",
+            subtitle="[muted]↑/↓ to navigate input history[/muted]",
+            border_style="bright_black",
+            box=box.ROUNDED,
+            padding=(0, 2),
+        )
+    )
+    ui_console.print()
+
+
+def render_session_notice(
+    message: str,
+    *,
+    style: str = "muted",
+) -> None:
+    ui_console.print(Text(f"  {message}", style=style))

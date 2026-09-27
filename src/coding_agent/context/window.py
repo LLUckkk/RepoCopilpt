@@ -40,22 +40,38 @@ def _split_history(
 ) -> tuple[tuple[Message, ...], tuple[ConversationBlock, ...]]:
     prefix: list[Message] = []
     blocks: list[ConversationBlock] = []
+    pending_messages: list[Message] = []
     index = 0
 
-    # 当前架构中，system和原始user message位于开头，始终保留
-    while index < len(history) and isinstance(history[index], Message):
-        prefix.append(history[index])
+    # 只有最前面的system message永久保留
+    while index < len(history):
+        item = history[index]
+        if not isinstance(item, Message):
+            break
+        if item.role is not MessageRole.SYSTEM:
+            break
+        prefix.append(item)
         index += 1
 
     while index < len(history):
         item = history[index]
 
+        if isinstance(item, Message):
+            if item.role is MessageRole.SYSTEM:
+                raise ContextHistoryError(
+                    "system message may only appear at the beginning of the history"
+                )
+            pending_messages.append(item)
+            index += 1
+            continue
+
         if not isinstance(item, ModelTurn):
             raise ContextHistoryError(
-                "expected a model turn at the start of an interaction block"
+                "expected a message or a model turn at the start of an interaction block"
             )
 
-        block_items: list[ConversationItem] = [item]
+        block_items: list[ConversationItem] = [*pending_messages, item]
+        pending_messages.clear()
         index += 1
 
         if item.tool_calls:
@@ -89,6 +105,10 @@ def _split_history(
                 )
 
         blocks.append(ConversationBlock(items=tuple(block_items)))
+
+    # 用户消息附加到他后面的第一个模型交互块，旧任务可以随着相关工具调用一起被压缩，而不是永久占据上下文
+    if pending_messages:
+        blocks.append(ConversationBlock(items=tuple(pending_messages)))
 
     return tuple(prefix), tuple(blocks)
 
