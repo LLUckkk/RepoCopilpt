@@ -12,6 +12,7 @@ from coding_agent.agent import (
 )
 from coding_agent.cli.console_approval import ConsoleApprovalHandler
 from coding_agent.cli.console_events import ConsoleEventHandler
+from coding_agent.cli.ui import render_final_answer, render_header
 from coding_agent.providers import (
     ModelProviderError,
     OpenAICompatibleProvider,
@@ -67,6 +68,8 @@ async def _execute_agent(
         ]
     )
 
+    event_handler = ConsoleEventHandler(verbose=verbose)
+
     agent = AgentLoop(
         provider=provider,
         registry=registry,
@@ -75,12 +78,13 @@ async def _execute_agent(
         ),
         max_steps=max_steps,
         max_context_tokens=max_context_tokens,
-        event_handler=ConsoleEventHandler(verbose=verbose),
+        event_handler=event_handler,
     )
 
     try:
         return await agent.run(task)
     finally:
+        event_handler.close()
         await provider.close()
 
 
@@ -171,9 +175,8 @@ def run(
             err=True,
         )
         raise typer.Exit(code=2)
-    typer.echo(f"Workspace: {workspace}", err=True)
-    typer.echo(f"Model: {model_name}", err=True)
-    typer.echo("Agent is working...", err=True)
+
+    render_header(workspace=workspace, model=model_name)
 
     try:
         result = asyncio.run(
@@ -206,11 +209,7 @@ def run(
         typer.echo("\nCancelled.", err=True)
         raise typer.Exit(code=130) from exc
 
-    typer.echo()
-    typer.echo(result.final_text)
-    typer.echo()
-    typer.secho(
-        f"Completed in {result.steps} model step(s).",
-        fg=typer.colors.BRIGHT_BLACK,
-        err=True,
+    render_final_answer(
+        text=result.final_text,
+        steps=result.steps,
     )
