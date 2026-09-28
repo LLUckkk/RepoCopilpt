@@ -30,6 +30,8 @@ from coding_agent.tools import (
     CreateDirectoryTool,
     CreateFileTool,
     FindFilesTool,
+    GitDiffTool,
+    GitStatusTool,
     ListDirectoryTool,
     ReadFileTool,
     ReplaceTextTool,
@@ -156,6 +158,8 @@ async def _execute_agent(
             CreateFileTool(),
             CreateDirectoryTool(),
             FindFilesTool(),
+            GitStatusTool(),
+            GitDiffTool(),
         ]
     )
 
